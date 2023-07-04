@@ -5,6 +5,7 @@ using UnityEngine;
 using DG.Tweening;
 using UnityEngine.InputSystem;
 using StarterAssets;
+using AetherEvents;
 
 public class Player : DicePlayer
 {
@@ -12,34 +13,38 @@ public class Player : DicePlayer
     private float interactionMaxDistance = 10f;
     [SerializeField]
     private FirstPersonController playerController;
-    [SerializeField]
-    [Range(0f, 1f)]
-    private float maxVignetteValue = 0.8f;
 
     public Transform gunHolder;
     public int droppingBombsNumToGoIntoMadness = 5;
 
-    private int currentBombingsDone = 0;
-    public int CurrentBombingsDone 
-    {
-        get => currentBombingsDone;
-        set
-        {
-            currentBombingsDone = value;
-            LoseALittleBitOfSanity();
-        }
-    }
-    
+    public int CurrentBombingsDone { get; set; } = 0;
+
     public bool IsPlayerHoldingGun => gun;
     public bool IsGonnaSnap => CurrentBombingsDone + 1 >= droppingBombsNumToGoIntoMadness;
 
     private Gun gun;
 
+    protected override void Awake()
+    {
+        base.Awake();
+        BombsDropped.AddListener(OnBombsDropping);
+    }
+
+    private void Start()
+    {
+        playerController.FreezeCameraRotation = true;
+    }
+
     public void OnPlayerAction(InputValue inputValue)
     {
-        if(inputValue.isPressed)
+        if(inputValue.isPressed && GameplayManager.Instance.State != GameState.GameOver)
         {
-            if(IsPlayerHoldingGun)
+            if(GameplayManager.Instance.State == GameState.ClosedEyes)
+            {
+                GameplayManager.Instance.OpenEyes();
+                playerController.FreezeCameraRotation = false;
+            }
+            else if(IsPlayerHoldingGun)
             {
                 gun.TryToShoot();
             }
@@ -60,7 +65,7 @@ public class Player : DicePlayer
             {
                 diceThrowing.SpawnAndThrowDices();
             }
-            else if(GameplayManager.Instance.State != GameState.SatanMonolog && GameplayManager.Instance.State != GameState.SatanThrewDices && GameplayManager.Instance.State != GameState.SatanTurn && GameplayManager.Instance.State != GameState.GameOver)
+            else if(GameplayManager.Instance.State != GameState.SatanMonolog && GameplayManager.Instance.State != GameState.SatanThrewDices && GameplayManager.Instance.State != GameState.SatanTurn)
             {
                 TryToInteract();
             }
@@ -70,16 +75,21 @@ public class Player : DicePlayer
     public void TakeGun(Gun gun)
     {
         playerController.FreezeCameraRotation = true;
-        gun.Rigid.isKinematic = true;
-        gun.transform.SetParent(gunHolder);
-        gun.transform.DOLocalMove(Vector3.zero, 1f);
-        gun.transform.DOLocalRotate(Vector3.zero, 1f);
-        Tweener gunHolderTweener = gunHolder.transform.DOLocalRotate(new Vector3(0f, transform.localEulerAngles.y, 0f), 1f)
-            .OnComplete(() =>
-            {
-                this.gun = gun;
-                playerController.FreezeCameraRotation = false;
-            });
+        gun.Take(gunHolder, () =>
+        {
+            this.gun = gun;
+            playerController.FreezeCameraRotation = false;
+        });
+    }
+
+    public void BecomeSatan()
+    {
+        TryToThrowGun();
+    }
+
+    public void Die()
+    {
+        TryToThrowGun();
     }
 
     private bool TryToInteract()
@@ -88,7 +98,8 @@ public class Player : DicePlayer
         //int interactabeLayerMask = 1 << (int)Layers.Interactable;
         if(Physics.Raycast(cameraRay, out RaycastHit hit, interactionMaxDistance))
         {
-            if(hit.collider.TryGetComponent(out IInteractable interactable))
+            IInteractable interactable = hit.collider.GetComponentInParent<IInteractable>();
+            if(interactable != null)
             {
                 interactable.Interact(this);
                 return true;
@@ -98,15 +109,27 @@ public class Player : DicePlayer
         return false;
     }
 
+    private void OnBombsDropping(BombsDropped eventData)
+    {
+        LoseALittleBitOfSanity();
+    }
+
     private void LoseALittleBitOfSanity()
     {
-        float oneBombDropVignetteValue = maxVignetteValue / droppingBombsNumToGoIntoMadness;
-        float vignetteEndValueForNow = oneBombDropVignetteValue * CurrentBombingsDone;
-        GameplayManager.Instance.postProcessController.SetVignetteSmoothly(vignetteEndValueForNow, 1.5f);
+        float insanityProgress = CurrentBombingsDone / (float)droppingBombsNumToGoIntoMadness;
+        new ALittleBitOfSanityLost(insanityProgress).Invoke();
 
-        if(CurrentBombingsDone >= droppingBombsNumToGoIntoMadness)
+        if (CurrentBombingsDone >= droppingBombsNumToGoIntoMadness)
         {
             GameplayManager.Instance.BurzaEnding();
+        }
+    }
+
+    private void TryToThrowGun()
+    {
+        if(gun)
+        {
+            gun.Throw();
         }
     }
 }

@@ -1,3 +1,5 @@
+using AetherEvents;
+using DG.Tweening;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -7,6 +9,8 @@ public class SoundManager : SingleBehaviour<SoundManager>
 {
     public AudioSource ambientSource;
     public List<AudioSource> soundsSources;
+    [SerializeField]
+    private float audioFadeInDuration = 3f;
 
     [Header("Rare ambient")]
     public AudioSource rareAmbientSource;
@@ -22,26 +26,37 @@ public class SoundManager : SingleBehaviour<SoundManager>
     [SerializeField]
     private List<AudioRecord> satanTalking;
 
+    private Dictionary<AudioSource, float> audioSourcesDefaultVolumes = new Dictionary<AudioSource, float>();
+
     protected override void Awake()
     {
         base.Awake();
         rareAmbientPlayedTimestamp = Time.time;
+        DoOnAllSoundsSources(source => audioSourcesDefaultVolumes.Add(source, source.volume));
+    }
+
+    private void Start()
+    {
+        AudioFadeIn();
     }
 
     private void Update()
     {
-        if(!rareAmbientPlayedAlready)
+        if(GameplayManager.Instance.State != GameState.GameOver)
         {
-            if(Time.time - rareAmbientPlayedTimestamp > firstPlayDelay)
+            if(!rareAmbientPlayedAlready)
             {
-                PlayRareAmbient();
+                if(Time.time - rareAmbientPlayedTimestamp > firstPlayDelay)
+                {
+                    PlayRareAmbient();
+                }
             }
-        }
-        else
-        {
-            if(Time.time - rareAmbientPlayedTimestamp > anotherPlayDelayAfterFirst)
+            else
             {
-                PlayRareAmbient();
+                if(Time.time - rareAmbientPlayedTimestamp > anotherPlayDelayAfterFirst)
+                {
+                    PlayRareAmbient();
+                }
             }
         }
     }
@@ -64,10 +79,29 @@ public class SoundManager : SingleBehaviour<SoundManager>
         rareAmbientPlayedTimestamp = Time.time;
     }
 
-    public void StopAllMusic()
+    private void AudioFadeIn()
     {
-        ambientSource.Stop();
-        rareAmbientSource.Stop();
+        DoOnAllSoundsSources(source =>
+        {
+            float targetDefaultVolume = source.volume;
+            source.volume = 0f;
+            AdjustVolumeByTweening(source, targetDefaultVolume, audioFadeInDuration);
+        });
+    }
+
+    public void StopAllMusicAndSounds() => DoOnAllSoundsSources(source => source.Stop());
+
+    public void AdjustVolumeByTweening(AudioSource source, float targetVolume, float duration)
+    {
+        DOTween.To(() => source.volume, value => source.volume = value, targetVolume, duration).SetEase(Ease.Linear);
+    }
+
+    private void DoOnAllSoundsSources(Action<AudioSource> action)
+    {
+        action(ambientSource);
+        action(rareAmbientSource);
+        soundsSources.ForEach(source => action(source));
+        new DoOnAllAudioControllers(action).Invoke();
     }
 }
 
