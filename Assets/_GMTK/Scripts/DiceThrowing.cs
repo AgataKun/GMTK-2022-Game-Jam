@@ -25,17 +25,14 @@ public class DiceThrowing : MonoBehaviour
     [SerializeField]
     private Transform throwDicesPosition;
     [SerializeField]
-    private float moveFromDicesShowToThrowPosition = 0.2f;
-    [SerializeField]
     private DicesGroup dicesGroupToSpawnPrefab;
 
-    public (int sumValue, int dicesNum) CurrentScore => dicesGroup.CurrentValue;
-    public int AllDicesNum => dicesGroup.AllDicesNum;
+    public int CurrentScore => dicesGroup.CurrentValue;
 
     [Button(enabledMode: EButtonEnableMode.Playmode)]
     public void ThrowDices()
     {
-        dicesGroup.transform.DOMove(throwDicesPosition.position, moveFromDicesShowToThrowPosition).OnComplete(() =>
+        dicesGroup.transform.DOMove(throwDicesPosition.position, 0.2f).OnComplete(() =>
         {
             dicesGroup.Roll(throwRangeMin.forward * throwForceScaleMin, throwRangeMax.forward * throwForceScaleMax, throwTorqueMin, throwTorqueMax);
         });

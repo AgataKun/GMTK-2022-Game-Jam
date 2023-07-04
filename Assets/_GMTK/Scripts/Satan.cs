@@ -1,20 +1,14 @@
 using DG.Tweening;
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class Satan : DicePlayer
 {
-    private SatanFaces satanFaces;
+    [SerializeField]
+    private Transform facesTransform;
 
-    public SatanFaceType CurrentFace => satanFaces.CurrentFace;
-
-    protected override void Awake()
-    {
-        base.Awake();
-        satanFaces = GetComponent<SatanFaces>();
-    }
+    public SatanFaceType CurrentFace { get; private set; } = SatanFaceType.Joy;
 
     private void Start()
     {
@@ -26,7 +20,29 @@ public class Satan : DicePlayer
         GameplayManager.Instance.OnPlayerThrewDices -= OnPlayerThrewDices;
     }
 
-    public void SetFace(SatanFaceType newFaceType) => satanFaces.SetFace(newFaceType);
+    public void SetFace(SatanFaceType newFaceType)
+    {
+        //if(newFaceType == CurrentFace)
+        //{
+        //    return;
+        //}
+
+
+        int diff = (int)CurrentFace - (int)newFaceType;
+        float currentRotation = facesTransform.eulerAngles.y;
+        Vector3 endRotationValue = new Vector3(facesTransform.eulerAngles.x, currentRotation - 90f * diff, facesTransform.eulerAngles.z);
+        if(diff == 0)
+        {
+            facesTransform.DORotate(new Vector3(0f, 360f, 0f), 3f, RotateMode.FastBeyond360).SetRelative(true);
+            SoundManager.Instance.Play(Audio.SatanSetFaceLonger);
+        }
+        else
+        {
+            facesTransform.DORotate(endRotationValue, 2f);
+            SoundManager.Instance.Play(Audio.SatanSetFaceShorter);
+        }
+        CurrentFace = newFaceType;
+    }
 
     private void OnPlayerThrewDices()
     {
@@ -36,14 +52,7 @@ public class Satan : DicePlayer
     private IEnumerator AfterPlayerThrewDicesEnumerator()
     {
         yield return new WaitForSeconds(2f);
-
         Debug.Log("Your score: " + GameplayManager.Instance.player.CurrentScore);
-        if(GameplayManager.Instance.player.CurrentScore.dicesNum < GameplayManager.Instance.player.AllDicesNum)
-        {
-            StoryManager.Instance.ShowNextSatanReaccToPlayerDiceNotFallingOnTheCrate();
-            yield return new WaitForSeconds(3f);
-        }
-
         GameplayManager.Instance.ChangeState(GameState.SatanTurn);
         diceThrowing.ThrowDices();
         GameplayManager.Instance.SatanThrewDices();

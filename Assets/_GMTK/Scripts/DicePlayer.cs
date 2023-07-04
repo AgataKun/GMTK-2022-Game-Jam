@@ -4,12 +4,11 @@ using UnityEngine;
 
 public class DicePlayer : MonoBehaviour
 {
-    public (int sumValue, int dicesNum) CurrentScore => diceThrowing.CurrentScore;
-    public int AllDicesNum => diceThrowing.AllDicesNum;
+    public int CurrentScore => diceThrowing.CurrentScore;
 
     protected DiceThrowing diceThrowing;
 
-    protected virtual void Awake()
+    protected void Awake()
     {
         diceThrowing = GetComponent<DiceThrowing>();
     }

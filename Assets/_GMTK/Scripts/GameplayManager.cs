@@ -7,8 +7,6 @@ using UnityEngine;
 using DG.Tweening;
 using UnityEngine.UI;
 using TMPro;
-using AetherEvents;
-using UnityEngine.Events;
 
 public class GameplayManager : SingleBehaviour<GameplayManager>
 {
@@ -23,16 +21,6 @@ public class GameplayManager : SingleBehaviour<GameplayManager>
     private CinemachineVirtualCamera vcamCrank;
     public PostProcessController postProcessController;
 
-    [Header("UI")]
-    [SerializeField]
-    private BlackScreen blackScreen;
-    [SerializeField]
-    private float onStartFadeOutDuration = 4f;
-    [SerializeField]
-    private GameObject openEyesText;
-    [SerializeField]
-    private TextMeshProUGUI thankYou;
-
     [Header("Other")]
     [SerializeField]
     private Transform crankToRoll;
@@ -41,44 +29,28 @@ public class GameplayManager : SingleBehaviour<GameplayManager>
     [SerializeField]
     private Transform hulkDoorRight;
     [SerializeField]
+    private Image blackScreen;
+    [SerializeField]
+    private TextMeshProUGUI thankYou;
+    [SerializeField]
     private List<Bomb> bombs;
 
-    [Header("Events")]
-    [SerializeField]
-    public UnityEvent<CinemachineVirtualCamera> OnVCamChanged;
-
     public GameState State { get; private set; }
-    public CinemachineVirtualCamera CurrentVCam
-    {
-        get => currentVCam;
-        private set
-        {
-            currentVCam = value;
-            OnVCamChanged.Invoke(CurrentVCam);
-        }
-    }
 
     public event Action OnPlayerThrewDices;
     public event Action OnSatanThrewDices;
 
-    private CinemachineVirtualCamera currentVCam;
+    private CinemachineVirtualCamera currentVcam;
 
     private void Start()
     {
-        State = GameState.ClosedEyes;
+        StartCoroutine(PlayTheGameWithDelay());
+        currentVcam = vcamFollowMouse;
     }
 
     private void OnEnable()
     {
         OnSatanThrewDices += ShowResultAfterSomeSeconds;
-    }
-
-    public void OpenEyes()
-    {
-        openEyesText.SetActive(false);
-        blackScreen.FadeOut(onStartFadeOutDuration, true);
-        StartCoroutine(PlayTheGameWithDelay());
-        CurrentVCam = vcamFollowMouse;
     }
 
     [Button(enabledMode: EButtonEnableMode.Playmode)]
@@ -98,29 +70,27 @@ public class GameplayManager : SingleBehaviour<GameplayManager>
 
     internal void Suicide()
     {
-        player.Die();
-        SoundManager.Instance.StopAllMusicAndSounds();
-        SoundManager.Instance.Play(Audio.Gunshot);
-        blackScreen.FadeIn(0f);
+        SoundManager.Instance.StopAllMusic();
+        blackScreen.gameObject.SetActive(true);
         StartCoroutine(ThankYouAfterDelay());
     }
 
     private IEnumerator ThankYouAfterDelay()
     {
-        ChangeState(GameState.GameOver);
         yield return new WaitForSeconds(3f);
-
+        ChangeState(GameState.GameOver);
         thankYou.gameObject.SetActive(true);
     }
 
     public void BurzaEnding()
     {
-        blackScreen.FadeIn(6f, true, () =>
-        {
-            satan.gameObject.SetActive(false);
-            player.BecomeSatan();
-            ChangeState(GameState.PlayerAsSatan);
-        });
+        blackScreen.color = new Color(0f, 0f, 0f, 0f);
+        DOTween.To(() => blackScreen.color.a, setter => blackScreen.color = new Color(0f, 0f, 0f, setter), 1f, 6f)
+            .OnComplete(() => {
+                satan.gameObject.SetActive(false);
+                ChangeState(GameState.PlayerAsSatan);
+            });
+        blackScreen.gameObject.SetActive(true);
         StartCoroutine(FadeInAfterDelay());
     }
 
@@ -128,11 +98,12 @@ public class GameplayManager : SingleBehaviour<GameplayManager>
     {
         yield return new WaitForSeconds(8f);
 
-        blackScreen.FadeOut(6f);
+        DOTween.To(() => blackScreen.color.a, setter => blackScreen.color = new Color(0f, 0f, 0f, setter), 0f, 6f);
         postProcessController.SetVignetteSmoothly(0.6f, 6f);
         yield return new WaitForSeconds(10f);
 
-        blackScreen.FadeIn(10f, false, () => StartCoroutine(ThankYouAfterDelay()));
+        DOTween.To(() => blackScreen.color.a, setter => blackScreen.color = new Color(0f, 0f, 0f, setter), 1f, 10f)
+            .OnComplete(() => StartCoroutine(ThankYouAfterDelay()));
     }
 
     public void PlayerThrewDices()
@@ -156,7 +127,7 @@ public class GameplayManager : SingleBehaviour<GameplayManager>
         Debug.Log("Hull opened, bombs are falling");
         ChangeState(GameState.BombsAreFalling);
 
-        if (player.IsGonnaSnap)
+        if(player.IsGonnaSnap)
         {
             StoryManager.Instance.ShowLines(StoryManager.Instance.burzaEndingStarts);
         }
@@ -174,14 +145,16 @@ public class GameplayManager : SingleBehaviour<GameplayManager>
     private IEnumerator DropBombsAfterDelay()
     {
         yield return new WaitForSeconds(2f);
-        bombs.ForEach(bomb => bomb.Fall());
+        bombs.ForEach(bomb => {
+            bomb.GetComponent<Rigidbody>().isKinematic = false;
+            bomb.transform.SetParent(null);
+            SoundManager.Instance.Play(Audio.BombsFalling); // play for every bomb or just once for them all?
+        });
 
         StartCoroutine(CloseHullDoorAfterBombing());
         StartCoroutine(PlayTheGameAfterBombsFallen(player.IsGonnaSnap));
 
         player.CurrentBombingsDone++;
-
-        new BombsDropped(player.CurrentBombingsDone).Invoke();
     }
 
     private IEnumerator CloseHullDoorAfterBombing()
@@ -200,13 +173,13 @@ public class GameplayManager : SingleBehaviour<GameplayManager>
         yield return new WaitForSeconds(2f);
         Debug.Log("Satan score: " + satan.CurrentScore);
 
-        if (player.CurrentScore.sumValue > satan.CurrentScore.sumValue)
+        if(player.CurrentScore > satan.CurrentScore)
         {
             StoryManager.Instance.ShowNextSatanLoseLines();
             Debug.Log("The weather is so bad, that the bombing was canceled.");
             PlayTheGame();
         }
-        else if (satan.CurrentScore.sumValue > player.CurrentScore.sumValue)
+        else if(satan.CurrentScore > player.CurrentScore)
         {
             StoryManager.Instance.ShowNextSatanWinLines();
             Debug.Log("Aaand there goes the bombs.");
@@ -223,8 +196,8 @@ public class GameplayManager : SingleBehaviour<GameplayManager>
 
     private void LookAtCrank()
     {
-        vcamCrank.Priority = CurrentVCam.Priority + 1;
-        CurrentVCam = vcamCrank;
+        vcamCrank.Priority = currentVcam.Priority + 1;
+        currentVcam = vcamCrank;
         StartCoroutine(ReleaseTheCameraAfterDelay());
     }
 
@@ -239,30 +212,32 @@ public class GameplayManager : SingleBehaviour<GameplayManager>
     {
         yield return new WaitForSeconds(4f);
 
-        if (State == GameState.BombsAreFalling && !isPlayerGonnaSnap)
+        if(State == GameState.BombsAreFalling && !isPlayerGonnaSnap)
         {
             StoryManager.Instance.ShowNextSatanSuggestion();
         }
-        yield return new WaitForSeconds(5f);
+        yield return new WaitForSeconds(3f);
 
-        if (State == GameState.BombsAreFalling)
+        if(State == GameState.BombsAreFalling)
         {
             PlayTheGame();
         }
+        yield return new WaitForSeconds(3f);
+
         bombs.ForEach(bomb => bomb.ResetPos());
     }
 
     private IEnumerator ReleaseTheCameraAfterDelay()
     {
         yield return new WaitForSeconds(1.5f);
-        vcamFollowMouse.Priority = CurrentVCam.Priority + 1;
-        CurrentVCam = vcamFollowMouse;
+        vcamFollowMouse.Priority = currentVcam.Priority + 1;
+        currentVcam = vcamFollowMouse;
     }
 }
 
 public enum GameState
 {
-    ClosedEyes,
+    Intro,
     SatanMonolog,
     PlayerCanInteractNoDice,
     PlayerCanInteract,
